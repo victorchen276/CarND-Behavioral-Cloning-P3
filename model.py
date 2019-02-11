@@ -1,77 +1,109 @@
-import tensorflow as tf
-from keras.layers import Dense, Flatten, Lambda, Activation, MaxPooling2D
-from keras.layers.convolutional import Convolution2D
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
 from keras.models import Sequential
 from keras.optimizers import Adam
+from keras.callbacks import ModelCheckpoint
+from keras.layers import Lambda, Conv2D, MaxPooling2D, Dropout, Dense, Flatten
+from utils import INPUT_SHAPE, batch_generator
+import argparse
+import os
 
-import helper
+np.random.seed(0)
 
-tf.python.control_flow_ops = tf
 
-number_of_epochs = 8
-number_of_samples_per_epoch = 20032
-number_of_validation_samples = 6400
-learning_rate = 1e-4
-activation_relu = 'relu'
+def load_data(args):
+    """
+    Load training data and split it into training and validation set
+    """
+    data_df = pd.read_csv(os.path.join(args.data_dir, 'driving_log.csv'))
 
-# Our model is based on NVIDIA's "End to End Learning for Self-Driving Cars" paper
-# Source:  https://images.nvidia.com/content/tegra/automotive/images/2016/solutions/pdf/end-to-end-dl-using-px.pdf
-model = Sequential()
+    X = data_df[['center', 'left', 'right']].values
+    y = data_df['steering'].values
 
-model.add(Lambda(lambda x: x / 127.5 - 1.0, input_shape=(64, 64, 3)))
+    X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=args.test_size, random_state=0)
 
-# starts with five convolutional and maxpooling layers
-model.add(Convolution2D(24, 5, 5, border_mode='same', subsample=(2, 2)))
-model.add(Activation(activation_relu))
-model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
+    return X_train, X_valid, y_train, y_valid
 
-model.add(Convolution2D(36, 5, 5, border_mode='same', subsample=(2, 2)))
-model.add(Activation(activation_relu))
-model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
 
-model.add(Convolution2D(48, 5, 5, border_mode='same', subsample=(2, 2)))
-model.add(Activation(activation_relu))
-model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
+def build_model(args):
+    """
+    Modified NVIDIA model
+    """
+    model = Sequential()
+    model.add(Lambda(lambda x: x/127.5-1.0, input_shape=INPUT_SHAPE))
+    model.add(Conv2D(24, 5, 5, activation='elu', subsample=(2, 2)))
+    model.add(Conv2D(36, 5, 5, activation='elu', subsample=(2, 2)))
+    model.add(Conv2D(48, 5, 5, activation='elu', subsample=(2, 2)))
+    model.add(Conv2D(64, 3, 3, activation='elu'))
+    model.add(Conv2D(64, 3, 3, activation='elu'))
+    model.add(Dropout(args.keep_prob))
+    model.add(Flatten())
+    model.add(Dense(100, activation='elu'))
+    model.add(Dense(50, activation='elu'))
+    model.add(Dense(10, activation='elu'))
+    model.add(Dense(1))
+    model.summary()
 
-model.add(Convolution2D(64, 3, 3, border_mode='same', subsample=(1, 1)))
-model.add(Activation(activation_relu))
-model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
+    return model
 
-model.add(Convolution2D(64, 3, 3, border_mode='same', subsample=(1, 1)))
-model.add(Activation(activation_relu))
-model.add(MaxPooling2D(pool_size=(2, 2), strides=(1, 1)))
 
-model.add(Flatten())
+def train_model(model, args, X_train, X_valid, y_train, y_valid):
+    """
+    Train the model
+    """
+    checkpoint = ModelCheckpoint('model-{epoch:03d}.h5',
+                                 monitor='val_loss',
+                                 verbose=0,
+                                 save_best_only=args.save_best_only,
+                                 mode='auto')
 
-# Next, five fully connected layers
-model.add(Dense(1164))
-model.add(Activation(activation_relu))
+    model.compile(loss='mean_squared_error', optimizer=Adam(lr=args.learning_rate))
 
-model.add(Dense(100))
-model.add(Activation(activation_relu))
+    model.fit_generator(batch_generator(args.data_dir, X_train, y_train, args.batch_size, True),
+                        args.samples_per_epoch,
+                        args.nb_epoch,
+                        max_q_size=1,
+                        validation_data=batch_generator(args.data_dir, X_valid, y_valid, args.batch_size, False),
+                        nb_val_samples=len(X_valid),
+                        callbacks=[checkpoint],
+                        verbose=1)
 
-model.add(Dense(50))
-model.add(Activation(activation_relu))
 
-model.add(Dense(10))
-model.add(Activation(activation_relu))
+def s2b(s):
+    """
+    Converts a string to boolean value
+    """
+    s = s.lower()
+    return s == 'true' or s == 'yes' or s == 'y' or s == '1'
 
-model.add(Dense(1))
 
-model.summary()
+def main():
+    """
+    Load train/validation data set and train the model
+    """
+    parser = argparse.ArgumentParser(description='Behavioral Cloning Training Program')
+    parser.add_argument('-d', help='data directory',        dest='data_dir',          type=str,   default='data')
+    parser.add_argument('-t', help='test size fraction',    dest='test_size',         type=float, default=0.2)
+    parser.add_argument('-k', help='drop out probability',  dest='keep_prob',         type=float, default=0.5)
+    parser.add_argument('-n', help='number of epochs',      dest='nb_epoch',          type=int,   default=10)
+    parser.add_argument('-s', help='samples per epoch',     dest='samples_per_epoch', type=int,   default=20000)
+    parser.add_argument('-b', help='batch size',            dest='batch_size',        type=int,   default=40)
+    parser.add_argument('-o', help='save best models only', dest='save_best_only',    type=s2b,   default='true')
+    parser.add_argument('-l', help='learning rate',         dest='learning_rate',     type=float, default=1.0e-4)
+    args = parser.parse_args()
 
-model.compile(optimizer=Adam(learning_rate), loss="mse", )
+    print('-' * 30)
+    print('Parameters')
+    print('-' * 30)
+    for key, value in vars(args).items():
+        print('{:<20} := {}'.format(key, value))
+    print('-' * 30)
 
-# create two generators for training and validation
-train_gen = helper.generate_next_batch()
-validation_gen = helper.generate_next_batch()
+    data = load_data(args)
+    model = build_model(args)
+    train_model(model, args, *data)
 
-history = model.fit_generator(train_gen,
-                              samples_per_epoch=number_of_samples_per_epoch,
-                              nb_epoch=number_of_epochs,
-                              validation_data=validation_gen,
-                              nb_val_samples=number_of_validation_samples,
-                              verbose=1)
 
-# finally save our model and weights
-helper.save_model(model)
+if __name__ == '__main__':
+    main()
