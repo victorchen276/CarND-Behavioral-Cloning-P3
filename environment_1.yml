@@ -1,4 +1,4 @@
-name: behavioralcloning
+name: behavioral-cloning
 channels:
     - https://conda.anaconda.org/menpo
     - conda-forge
@@ -17,7 +17,8 @@ dependencies:
     - flask-socketio
     - seaborn
     - pandas
+    - imageio
     - pip:
         - moviepy
         - tensorflow
-        - git+https://github.com/fchollet/keras.git
+        - keras==2.0.8

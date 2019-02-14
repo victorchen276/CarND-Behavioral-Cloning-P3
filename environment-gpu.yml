@@ -1,4 +1,4 @@
-name: car-behavioral-cloning-gpu
+name: car-behavioral-cloning
 channels:
     - https://conda.anaconda.org/menpo
     - conda-forge
@@ -20,5 +20,5 @@ dependencies:
     - imageio
     - pip:
         - moviepy
-        - tensorflow-gpu
-        - keras
+        - tensorflow-gpu==1.1
+        - keras==1.2
