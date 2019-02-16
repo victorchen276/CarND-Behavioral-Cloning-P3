@@ -100,9 +100,9 @@ def main():
         print('{:<20} := {}'.format(key, value))
     print('-' * 30)
 
-    data = load_data(args)
-    model = build_model(args)
-    train_model(model, args, *data)
+    # data = load_data(args)
+    # model = build_model(args)
+    # train_model(model, args, *data)
 
 
 if __name__ == '__main__':
