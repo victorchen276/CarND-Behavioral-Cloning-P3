@@ -14,7 +14,8 @@ from io import BytesIO
 
 from keras.models import load_model
 
-import utils
+# import utils
+import cv2, os
 
 sio = socketio.Server()
 app = Flask(__name__)
@@ -25,6 +26,16 @@ MAX_SPEED = 25
 MIN_SPEED = 10
 
 speed_limit = MAX_SPEED
+IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS = 66, 200, 3
+
+def preprocess(image):
+    # Crop the image (removing the sky at the top and the car front at the bottom)
+    image = image[60:-25, :, :]
+    # Resize the image to the input shape used by the network model
+    image = cv2.resize(image, (IMAGE_WIDTH, IMAGE_HEIGHT), cv2.INTER_AREA)
+    # Convert the image from RGB to YUV (This is what the NVIDIA model does)
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
+    return image
 
 @sio.on('telemetry')
 def telemetry(sid, data):
